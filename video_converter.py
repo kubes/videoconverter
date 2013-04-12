@@ -30,7 +30,7 @@ files under a given directory are assumed to be video files.  The converted
 files can then be output to another directory keeping the same directory 
 structure.
 
-Use the -h or the --help flag to get a listing of options.
+Use the -h or the --help flag to get a listing of usage and options.
 
 Program: Reprocess Videos
 Author: Dennis E. Kubes
@@ -94,8 +94,7 @@ class MediaInfo:
     value = self._get_stripped_value("fps", "video_frame_rate")
     return int(float(value))
 
-  def get_video_bitrate(self):
-    raw_value = self.info.get("video_bit_rate")
+  def _get_bitrate(self, raw_value):
     if raw_value:
       if "kbps" in raw_value:
         value = self._get_stripped_value("kbps", "video_bit_rate")
@@ -106,9 +105,13 @@ class MediaInfo:
         return value
     return None       
 
+  def get_video_bitrate(self):
+    raw_value = self.info.get("video_bit_rate")
+    return self._get_bitrate(raw_value)    
+
   def get_audio_bitrate(self):
-    value = self._get_stripped_value("kbps", "audio_bit_rate")
-    return int(float(value))
+    raw_value = self.info.get("audio_bit_rate")
+    return self._get_bitrate(raw_value)    
 
   def __str__(self):
     infostr = ""
@@ -122,12 +125,14 @@ class VideoConverter:
   format optimized for web viewing.
   """
   
-  def __init__(self, video_file, output_dir=None, dry_run=False, backup=False):
+  def __init__(self, video_file, output_dir=None, dry_run=False, 
+    exists=False, backup=False):
 
     self.parent_dir = os.path.dirname(video_file)
     self.video_file = video_file
     self.output_dir = output_dir if output_dir else self.parent_dir
     self.dry_run = dry_run
+    self.exists = exists
     self.backup = backup
     self.max_width = VIDEO_WIDTH
     self.max_height = VIDEO_HEIGHT
@@ -296,13 +301,19 @@ class VideoConverter:
           extfile = os.path.join(self.parent_dir, extname)
           tmpfile = os.path.join(self.parent_dir, tmpname)
 
-          logging.info("Conversion: %s" % " ".join(convertcmd))
-
-          # convert the video using ffmpeg
-          self._command(convertcmd)
-
           final_path = os.path.join(self.output_dir, extname)
           final_bak = os.path.join(self.output_dir, extname + ".bak")
+
+          # skip conversion if the exists flag is set and the file exists
+          if self.exists and os.path.exists(final_path):
+            logging.info("Skipping conversion of existing file %s" % final_path)
+            continue
+
+          # convert the video using ffmpeg
+          logging.info("Conversion: %s" % " ".join(convertcmd))           
+          self._command(convertcmd)
+
+          # perform backup if needed
           if os.path.exists(final_path) and self.backup:
 
             # if there an existing backup file, remove it, this means it was 
@@ -329,10 +340,12 @@ class BatchConverter:
   format optimized for web viewing.
   """
   
-  def __init__(self, input_dir=None, output_dir=None, dry_run=False, backup=False):
+  def __init__(self, input_dir=None, output_dir=None, dry_run=False, 
+    exists=False, backup=False):
     self.input_dir = input_dir
     self.output_dir = output_dir
     self.dry_run = dry_run
+    self.exists = exists
     self.backup = backup
                     
   def convert_all_videos(self):
@@ -365,7 +378,8 @@ class BatchConverter:
       # convert the video
       print("Converting %s of %s: %s" % (index + 1, num_videos, video))
       logging.info("Starting %s of %s: %s" % (index + 1, num_videos, video))
-      converter = VideoConverter(video, final_dir, self.dry_run, self.backup)
+      converter = VideoConverter(video, final_dir, self.dry_run, 
+        self.exists, self.backup)
       converter.convert_video()
       logging.info("Finsished %s of %s" % (index + 1, num_videos))
 
@@ -379,6 +393,7 @@ def usage():
   usage.append("  [-t | --output-dir] the video output directory.\n")
   usage.append("  [-f | --input-file] the input video file to convert\n")
   usage.append("  [-d | --dry-run] dry run, print commands, don't convert\n")
+  usage.append("  [-e | --exists] ignore file if output already exists.\n")
   usage.append("  [-b | --backup] backup old videos, rename to video.ext.old\n")
   usage.append("  [-g | --logfile] the conversion logfile\n")
   message = string.join(usage)
@@ -394,13 +409,14 @@ def main(argv):
   output_dir = None
   video_file = None
   dry_run = False
+  exists = False
   backup = False
                    
   try:
     
     # process the command line options   
-    opts, args = getopt.getopt(argv, "hi:t:f:dbg:", ["help", "input-dir=", 
-      "output-dir=", "file=", "dry-run", "backup", "logfile="])
+    opts, args = getopt.getopt(argv, "hi:t:f:debg:", ["help", "input-dir=", 
+      "output-dir=", "file=", "dry-run", "exists","backup", "logfile="])
     
     # if no arguments print usage
     if len(argv) == 0:      
@@ -421,6 +437,8 @@ def main(argv):
         video_file = os.path.abspath(arg)
       elif opt in ("-d", "--dry-run"):                
         dry_run = True
+      elif opt in ("-e", "--exists"):                
+        exists = True
       elif opt in ("-b", "--backup"):                
         backup = True
       elif opt in ("-g", "--logfile"):
@@ -442,10 +460,10 @@ def main(argv):
       
   # create the converter object and call its convert method
   if batch:
-    converter = BatchConverter(input_dir, output_dir, dry_run, backup)
+    converter = BatchConverter(input_dir, output_dir, dry_run, exists, backup)
     converter.convert_all_videos()
   elif single:
-    converter = VideoConverter(video_file, output_dir, dry_run, backup)
+    converter = VideoConverter(video_file, output_dir, dry_run, exists, backup)
     converter.convert_video()    
       
 # if we are running the script from the command line, run the main method
