@@ -94,24 +94,23 @@ class MediaInfo:
     value = self._get_stripped_value("fps", "video_frame_rate")
     return int(float(value))
 
-  def _get_bitrate(self, raw_value):
+  def _get_bitrate(self, label):
+    raw_value = self.info.get(label)    
     if raw_value:
       if "kbps" in raw_value:
-        value = self._get_stripped_value("kbps", "video_bit_rate")
+        value = self._get_stripped_value("kbps", label)
         return int(float(value))
       elif "mbps" in raw_value:
-        value = self._get_stripped_value("mbps", "video_bit_rate")
+        value = self._get_stripped_value("mbps", label)
         value = int(float(value)) * 1024
         return value
     return None       
 
   def get_video_bitrate(self):
-    raw_value = self.info.get("video_bit_rate")
-    return self._get_bitrate(raw_value)    
+    return self._get_bitrate("video_bit_rate")    
 
   def get_audio_bitrate(self):
-    raw_value = self.info.get("audio_bit_rate")
-    return self._get_bitrate(raw_value)    
+    return self._get_bitrate("audio_bit_rate")    
 
   def __str__(self):
     infostr = ""
