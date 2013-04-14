@@ -54,6 +54,7 @@ VIDEO_WIDTH = 640.0
 VIDEO_HEIGHT =  480.0
 MAX_VIDEO_BITRATE_KBPS = 1024
 MAX_AUDIO_BITRATE_KBPS = 56
+MAX_AUDIO_SAMPLING = 22050
 
 class MediaInfo:
   """
@@ -81,20 +82,8 @@ class MediaInfo:
     if stripped:
       stripped = stripped.replace(label, "").replace(" ", "")
     return stripped
-    
-  def get_width(self):
-    value = self._get_stripped_value("pixels", "video_width")
-    return int(value)
 
-  def get_height(self):
-    value = self._get_stripped_value("pixels", "video_height")
-    return int(value)
-
-  def get_frame_rate(self):
-    value = self._get_stripped_value("fps", "video_frame_rate")
-    return int(float(value))
-
-  def _get_bitrate(self, label):
+  def _get_bitrate_in_kbps(self, label):
     raw_value = self.info.get(label)    
     if raw_value:
       if "kbps" in raw_value:
@@ -104,13 +93,38 @@ class MediaInfo:
         value = self._get_stripped_value("mbps", label)
         value = int(float(value)) * 1024
         return value
-    return None       
+    return None
+
+  def get_width(self):
+    value = self._get_stripped_value("pixels", "video_width")
+    return int(value)
+
+  def get_height(self):
+    value = self._get_stripped_value("pixels", "video_height")
+    return int(value)
+
+  def get_frames_per_second(self):
+    value = self._get_stripped_value("fps", "video_frame_rate")
+    return int(float(value))
 
   def get_video_bitrate(self):
-    return self._get_bitrate("video_bit_rate")    
+    return self._get_bitrate_in_kbps("video_bit_rate")    
 
   def get_audio_bitrate(self):
-    return self._get_bitrate("audio_bit_rate")    
+    return self._get_bitrate_in_kbps("audio_bit_rate")    
+
+  def get_audio_sampling(self):
+    label = "audio_sampling_rate"
+    raw_value = self.info.get(label)    
+    if raw_value:
+      if "khz" in raw_value:
+        sampling = self._get_stripped_value("khz", label)
+        sampling = int(float(sampling)) * 1024
+        return sampling
+      elif "hz" in raw_value:
+        sampling = self._get_stripped_value("hz", label)
+        return int(float(sampling))        
+    return None
 
   def __str__(self):
     infostr = ""
@@ -124,24 +138,26 @@ class VideoConverter:
   format optimized for web viewing.
   """
   
-  def __init__(self, video_file, output_dir=None, dry_run=False, 
-    exists=False, backup=False):
+  def __init__(self, video_file, output_dir=None, prefix=None, dry_run=False, 
+    exists=False, backup=False, verbosity="verbose"):
 
     self.parent_dir = os.path.dirname(video_file)
     self.video_file = video_file
     self.output_dir = output_dir if output_dir else self.parent_dir
+    self.prefix = prefix
     self.dry_run = dry_run
     self.exists = exists
     self.backup = backup
     self.max_width = VIDEO_WIDTH
     self.max_height = VIDEO_HEIGHT
+    self.verbosity = verbosity;
 
   def _command(self, params):
     if not self.dry_run:  
       subprocess.check_call(params)
 
   def _get_convert_command(self, filetype, original, output, frame_rate, 
-    video_bitrate, audio_bitrate, padscale):
+    video_bitrate, audio_bitrate, audio_sampling, padscale):
 
     if (filetype == "flv"):
       return [
@@ -159,8 +175,9 @@ class VideoConverter:
         "-ac", "1",
         "-ar", "22050",
         "-ab", str(audio_bitrate) + "k",
-        "-v", "quiet",
-        "-vf", padscale, output]
+        "-v", self.verbosity,
+        "-vf", padscale, 
+        output]
 
     elif filetype == "mp4":
       return [
@@ -187,8 +204,9 @@ class VideoConverter:
         "-bufsize", "10000000",
         "-threads", "0",
         "-pix_fmt", "yuv420p",
-        "-v", "quiet",
-        "-vf", padscale, output]
+        "-v", self.verbosity,
+        "-vf", padscale, 
+        output]
 
     elif filetype == "webm":
       return [
@@ -205,10 +223,11 @@ class VideoConverter:
         "-mbd", "2",
         "-trellis", "1",
         "-ac", "1",
-        "-ar", "22050",
+        "-ar", str(audio_sampling),
         "-ab", str(audio_bitrate) + "k",
-        "-v", "quiet",
-        "-vf", padscale, output]
+        "-v", self.verbosity,
+        "-vf", padscale, 
+        output]
 
     elif filetype == "ogv":
       return [
@@ -225,19 +244,21 @@ class VideoConverter:
         "-mbd", "2",
         "-trellis", "1",
         "-ac", "1",
-        "-ar", "22050",
+        "-ar", str(audio_sampling),
         "-ab", str(audio_bitrate) + "k",
-        "-v", "quiet",
-        "-vf", padscale, output]
+        "-v", self.verbosity,
+        "-vf", padscale, 
+        output]
 
   def _get_convert_commands(self, original, output):
   
     mediainfo = MediaInfo(original)
     width = mediainfo.get_width()
     height = mediainfo.get_height()
-    frame_rate = mediainfo.get_frame_rate()
+    fps = mediainfo.get_frames_per_second()
     video_bitrate = mediainfo.get_video_bitrate()
     audio_bitrate = mediainfo.get_audio_bitrate()
+    audio_sampling = mediainfo.get_audio_sampling()
 
     # calculate the correct width and height for the aspect ratio
     resize_width = width
@@ -266,13 +287,17 @@ class VideoConverter:
     if not audio_bitrate or audio_bitrate > MAX_AUDIO_BITRATE_KBPS:
       audio_bitrate = MAX_AUDIO_BITRATE_KBPS
 
+    # max high quality audio sampling
+    if not audio_sampling or audio_sampling > MAX_AUDIO_SAMPLING:
+      audio_sampling = MAX_AUDIO_SAMPLING
+
     # get all file type conversion commands
     commands = []
     for filetype in OUTPUTS:
       tmpfile = output + ".tmp." + filetype
       commands.append((filetype, self._get_convert_command(filetype, original, 
-         os.path.join(self.parent_dir, tmpfile), frame_rate, 
-         video_bitrate, audio_bitrate, padscale)))
+         os.path.join(self.parent_dir, tmpfile), fps, video_bitrate, 
+         audio_bitrate, audio_sampling, padscale)))
 
     return commands         
         
@@ -288,7 +313,7 @@ class VideoConverter:
           self._command(["mkdir", "-p", self.output_dir])
 
         # convert the original video into each of the different output formats
-        name = vparts[0]
+        name = self.prefix + vparts[0] if self.prefix else vparts[0]
         convertcmds = self._get_convert_commands(self.video_file, name)
         for (extension, convertcmd) in convertcmds:
 
@@ -339,13 +364,15 @@ class BatchConverter:
   format optimized for web viewing.
   """
   
-  def __init__(self, input_dir=None, output_dir=None, dry_run=False, 
-    exists=False, backup=False):
+  def __init__(self, input_dir=None, output_dir=None, prefix=None, 
+    dry_run=False, exists=False, backup=False, verbosity="verbose"):
     self.input_dir = input_dir
     self.output_dir = output_dir
+    self.prefix = prefix
     self.dry_run = dry_run
     self.exists = exists
     self.backup = backup
+    self.verbosity = verbosity
                     
   def convert_all_videos(self):
   
@@ -377,8 +404,8 @@ class BatchConverter:
       # convert the video
       print("Converting %s of %s: %s" % (index + 1, num_videos, video))
       logging.info("Starting %s of %s: %s" % (index + 1, num_videos, video))
-      converter = VideoConverter(video, final_dir, self.dry_run, 
-        self.exists, self.backup)
+      converter = VideoConverter(video, final_dir, self.prefix, self.dry_run, 
+        self.exists, self.backup, self.verbosity)
       converter.convert_video()
       logging.info("Finsished %s of %s" % (index + 1, num_videos))
 
@@ -390,10 +417,12 @@ def usage():
   usage.append("  [-h | --help] prints this help and usage message\n")
   usage.append("  [-i | --input-dir] the video input root directory.\n")
   usage.append("  [-t | --output-dir] the video output directory.\n")
+  usage.append("  [-p | --prefix] a filename prefix for video outputs.\n")
   usage.append("  [-f | --input-file] the input video file to convert\n")
   usage.append("  [-d | --dry-run] dry run, print commands, don't convert\n")
   usage.append("  [-e | --exists] ignore file if output already exists.\n")
-  usage.append("  [-b | --backup] backup old videos, rename to video.ext.old\n")
+  usage.append("  [-b | --backup] backup old videos, rename to *.bak\n")
+  usage.append("  [-v | --verbosity] the verbosity level, quiet to debug\n")
   usage.append("  [-g | --logfile] the conversion logfile\n")
   message = string.join(usage)
   print message
@@ -406,16 +435,19 @@ def main(argv):
   # set the default values
   input_dir = None
   output_dir = None
+  prefix = None
   video_file = None
   dry_run = False
   exists = False
   backup = False
+  verbosity = "verbose"
                    
   try:
     
     # process the command line options   
-    opts, args = getopt.getopt(argv, "hi:t:f:debg:", ["help", "input-dir=", 
-      "output-dir=", "file=", "dry-run", "exists","backup", "logfile="])
+    opts, args = getopt.getopt(argv, "hi:t:p:f:debv:g:", ["help", "input-dir=", 
+      "output-dir=", "output-prefix=", "file=", "dry-run", "exists","backup", 
+      "verbosity=", "logfile="])
     
     # if no arguments print usage
     if len(argv) == 0:      
@@ -431,7 +463,9 @@ def main(argv):
       elif opt in ("-i", "--input-dir"):                
         input_dir = os.path.abspath(arg)
       elif opt in ("-t", "--output-dir"):                
-        output_dir = os.path.abspath(arg)        
+        output_dir = os.path.abspath(arg)
+      elif opt in ("-p", "--prefix"):                
+        prefix = arg        
       elif opt in ("-f", "--file"):                
         video_file = os.path.abspath(arg)
       elif opt in ("-d", "--dry-run"):                
@@ -440,6 +474,8 @@ def main(argv):
         exists = True
       elif opt in ("-b", "--backup"):                
         backup = True
+      elif opt in ("-v", "--verbosity"):                
+        verbosity = arg        
       elif opt in ("-g", "--logfile"):
         logging.basicConfig(filename=arg,level=logging.INFO)
                                                
@@ -459,10 +495,12 @@ def main(argv):
       
   # create the converter object and call its convert method
   if batch:
-    converter = BatchConverter(input_dir, output_dir, dry_run, exists, backup)
+    converter = BatchConverter(input_dir, output_dir, prefix, dry_run, 
+      exists, backup, verbosity)
     converter.convert_all_videos()
   elif single:
-    converter = VideoConverter(video_file, output_dir, dry_run, exists, backup)
+    converter = VideoConverter(video_file, output_dir, prefix, dry_run, 
+      exists, backup, verbosity)
     converter.convert_video()    
       
 # if we are running the script from the command line, run the main method
