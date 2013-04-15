@@ -413,7 +413,7 @@ class BatchConverter:
 Prints out the usage for the command line.
 """
 def usage():
-  usage = ["flash_converter.py [-hrdb]\n"]
+  usage = ["flash_converter.py [-hitpfdebvg]\n"]
   usage.append("  [-h | --help] prints this help and usage message\n")
   usage.append("  [-i | --input-dir] the video input root directory.\n")
   usage.append("  [-t | --output-dir] the video output directory.\n")
