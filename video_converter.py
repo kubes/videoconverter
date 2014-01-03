@@ -184,7 +184,7 @@ class VideoConverter:
         FFMPEG,
         "-i", original,
         "-vcodec", "libx264",
-        "-acodec", "libfaac",
+        "-acodec", "libfdk_aac",
         "-preset", "slow",
         "-profile:v", "baseline",
         "-strict", "experimental",
