@@ -18,6 +18,8 @@ Script usage:
       [-b | --backup] backup old videos, rename to *.bak
       [-v | --verbosity] the verbosity level, quiet to debug
       [-g | --logfile] the conversion logfile
+      [-m | --format] list of output formats, overrides default
+
 
 To operate correctly serveral pieces of software must be installed from source.
 The follwing guide explains in detail how to download and install the software

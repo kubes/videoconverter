@@ -47,7 +47,6 @@ Revision      | Author            | Comment
 # Configuration options, currently outputs 640x480 scaled, padded with a max
 # video bitrate of 1024kbps and max audio bitrate of 56kbps.  If changing the
 # size be sure to change the bitrates to match.
-OUTPUTS = ["flv", "ogv", "mp4", "webm"]
 FFMPEG = "/usr/local/bin/ffmpeg"
 MEDIAINFO = "/usr/bin/mediainfo"
 VIDEO_WIDTH = 640.0
@@ -139,7 +138,7 @@ class VideoConverter:
   """
   
   def __init__(self, video_file, output_dir=None, prefix=None, dry_run=False, 
-    exists=False, backup=False, verbosity="verbose"):
+    exists=False, backup=False, verbosity="verbose", formats=None):
 
     self.parent_dir = os.path.dirname(video_file)
     self.video_file = video_file
@@ -151,6 +150,7 @@ class VideoConverter:
     self.max_width = VIDEO_WIDTH
     self.max_height = VIDEO_HEIGHT
     self.verbosity = verbosity;
+    self.formats = formats
 
   def _command(self, params):
     if not self.dry_run:  
@@ -293,7 +293,7 @@ class VideoConverter:
 
     # get all file type conversion commands
     commands = []
-    for filetype in OUTPUTS:
+    for filetype in self.formats:
       tmpfile = output + ".tmp." + filetype
       commands.append((filetype, self._get_convert_command(filetype, original, 
          os.path.join(self.parent_dir, tmpfile), fps, video_bitrate, 
@@ -365,7 +365,8 @@ class BatchConverter:
   """
   
   def __init__(self, input_dir=None, output_dir=None, prefix=None, 
-    dry_run=False, exists=False, backup=False, verbosity="verbose"):
+    dry_run=False, exists=False, backup=False, verbosity="verbose",
+    formats=None):
     self.input_dir = input_dir
     self.output_dir = output_dir
     self.prefix = prefix
@@ -373,6 +374,7 @@ class BatchConverter:
     self.exists = exists
     self.backup = backup
     self.verbosity = verbosity
+    self.formats = formats
                     
   def convert_all_videos(self):
   
@@ -405,7 +407,7 @@ class BatchConverter:
       print("Converting %s of %s: %s" % (index + 1, num_videos, video))
       logging.info("Starting %s of %s: %s" % (index + 1, num_videos, video))
       converter = VideoConverter(video, final_dir, self.prefix, self.dry_run, 
-        self.exists, self.backup, self.verbosity)
+        self.exists, self.backup, self.verbosity, self.formats)
       converter.convert_video()
       logging.info("Finsished %s of %s" % (index + 1, num_videos))
 
@@ -413,7 +415,7 @@ class BatchConverter:
 Prints out the usage for the command line.
 """
 def usage():
-  usage = ["flash_converter.py [-hitpfdebvg]\n"]
+  usage = ["flash_converter.py [-hitpfdebvgm]\n"]
   usage.append("  [-h | --help] prints this help and usage message\n")
   usage.append("  [-i | --input-dir] the video input root directory.\n")
   usage.append("  [-t | --output-dir] the video output directory.\n")
@@ -424,6 +426,7 @@ def usage():
   usage.append("  [-b | --backup] backup old videos, rename to *.bak\n")
   usage.append("  [-v | --verbosity] the verbosity level, quiet to debug\n")
   usage.append("  [-g | --logfile] the conversion logfile\n")
+  usage.append("  [-m | --format] list of output formats, overrides default\n")
   message = string.join(usage)
   print message
 
@@ -441,13 +444,15 @@ def main(argv):
   exists = False
   backup = False
   verbosity = "verbose"
+  allowed_formats = ["flv", "ogv", "mp4", "webm"]
+  formats = []
                    
   try:
     
     # process the command line options   
-    opts, args = getopt.getopt(argv, "hi:t:p:f:debv:g:", ["help", "input-dir=", 
+    opts, args = getopt.getopt(argv, "hi:t:p:f:debv:g:m:", ["help", "input-dir=", 
       "output-dir=", "output-prefix=", "file=", "dry-run", "exists","backup", 
-      "verbosity=", "logfile="])
+      "verbosity=", "logfile=", "format="])
     
     # if no arguments print usage
     if len(argv) == 0:      
@@ -478,6 +483,11 @@ def main(argv):
         verbosity = arg        
       elif opt in ("-g", "--logfile"):
         logging.basicConfig(filename=arg,level=logging.INFO)
+      elif opt in ("-m", "--format"):
+        for format in arg.split(","):
+          format = format.strip()
+          if format and format in allowed_formats:
+            formats.append(format)
                                                
   except getopt.GetoptError, msg:    
     print(msg)
@@ -492,15 +502,19 @@ def main(argv):
     print("A root directory or a single video file is required for conversion")
     usage()                          
     sys.exit(errno.EPERM)
+
+  # set formats to default if not set
+  if not formats:
+    formats = allowed_formats
       
   # create the converter object and call its convert method
   if batch:
     converter = BatchConverter(input_dir, output_dir, prefix, dry_run, 
-      exists, backup, verbosity)
+      exists, backup, verbosity, formats)
     converter.convert_all_videos()
   elif single:
     converter = VideoConverter(video_file, output_dir, prefix, dry_run, 
-      exists, backup, verbosity)
+      exists, backup, verbosity, formats)
     converter.convert_video()    
       
 # if we are running the script from the command line, run the main method
