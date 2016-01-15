@@ -149,7 +149,7 @@ class VideoConverter:
     self.backup = backup
     self.max_width = VIDEO_WIDTH
     self.max_height = VIDEO_HEIGHT
-    self.verbosity = verbosity;
+    self.verbosity = verbosity
     self.formats = formats
 
   def _command(self, params):
