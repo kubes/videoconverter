@@ -22,7 +22,7 @@ Script usage:
 
 
 To operate correctly serveral pieces of software must be installed from source.
-The follwing guide explains in detail how to download and install the software
+The following guide explains in detail how to download and install the software
 correctly. Other libraries such as libtheora may also need to be installed.
 
 https://ffmpeg.org/trac/ffmpeg/wiki/UbuntuCompilationGuide
